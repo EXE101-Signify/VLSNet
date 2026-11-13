@@ -61,6 +61,10 @@ def create_app(args):
         text_embeddings = model.text_encoder(labels_idx)
         text_embeddings = F.normalize(text_embeddings, p=2, dim=-1)
 
+    @app.get('/health', include_in_schema=False)
+    def health():
+        return {'status': 'ok'}
+
     inference_transforms = Compose([
         PoseJoinSelect(),
         TemporalInterpolatePose(frames=args.FRAMES),
@@ -166,8 +170,12 @@ def create_app(args):
         except Exception:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Inference failed"})
 
+    from mode.streaming_ws import install_streaming_route
+    install_streaming_route(app, model, text_embeddings, vocab_dict, device)
     return app
 
 
 def inference(args):
-    uvicorn.run(create_app(args), host="127.0.0.1", port=int(os.getenv("VSLNET_PORT", "8001")))
+    uvicorn.run(create_app(args), host=os.getenv("VSLNET_HOST", "127.0.0.1"),
+                port=int(os.getenv("VSLNET_PORT", "8001")),
+                ws_max_size=256_000)

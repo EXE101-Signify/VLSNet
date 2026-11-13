@@ -1,0 +1,15 @@
+# Local smoke testing only; Dokploy builds the Dockerfile as an Application.
+services:
+  vslnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SIGNIFY_VSL_STREAMING_SECRET: ${SIGNIFY_VSL_STREAMING_SECRET:-}
+      VSLNET_ALLOWED_ORIGINS: ${VSLNET_ALLOWED_ORIGINS:-http://localhost:3000}
+      VSLNET_BACKEND_URL: ${VSLNET_BACKEND_URL:-http://host.docker.internal:8080}
+    ports:
+      - "127.0.0.1:8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

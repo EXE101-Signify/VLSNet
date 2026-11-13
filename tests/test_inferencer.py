@@ -54,6 +54,11 @@ class InferenceApiTests(unittest.TestCase):
             cls.app = inferencer.create_app(SimpleNamespace(**settings))
             cls.checkpoint_loads = loader.call_count
 
+    def test_health_route_is_available_after_checkpoint_load(self):
+        route = next(route for route in self.app.routes if route.path == '/health')
+        self.assertEqual(route.endpoint(), {'status': 'ok'})
+        self.assertEqual(self.checkpoint_loads, 1)
+
     def test_checkpoint_loaded_once_and_invalid_video_rejected(self):
         self.assertEqual(self.checkpoint_loads, 1)
         def fail_ffmpeg(*args, **kwargs):

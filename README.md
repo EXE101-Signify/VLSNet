@@ -240,6 +240,56 @@ This project **does not use `.env` files**. All configuration lives in `config/v
 
 ## 🔄 How It Works
 
+For the inference-only Docker image and GitHub Actions → Dokploy setup, see
+[README-DEPLOY.md](README-DEPLOY.md). The deployed service binds port 8001
+inside the container; local `run.py inference` still defaults to loopback.
+
+### Signify experimental binary streaming
+
+`/ws/vsl/stream` is an experimental alternative to clip-based `/predict`. It
+uses the already loaded `best_v1.pth` and a MediaPipe Holistic tracker per
+session. The model still classifies an isolated 64-step pose window into one
+gloss; it does not translate continuous sign language or sentences. The
+rolling-window stability rule is a heuristic and has not been validated on
+annotated Vietnamese signing video. Keep `VSL_WORDS` clip mode available as
+the fallback.
+
+Spring Boot issues a five-minute session token after checking the active call
+and signer. Python verifies the token and asks Spring Boot whether the session
+is still active. Python authenticates its prediction callback with a separate
+service secret. Both services must receive the same
+`SIGNIFY_VSL_STREAMING_SECRET` environment variable (at least 32 UTF-8 bytes).
+Streaming is disabled when it is unset. Do not put this value in frontend
+configuration. Set `VSLNET_BACKEND_URL` for the callback target and
+`VSLNET_ALLOWED_ORIGINS` to a comma-separated list of exact browser origins.
+Set `SIGNIFY_VSL_WS_URL` on Spring Boot to the WebSocket URL reachable by the
+signer's browser; local `127.0.0.1` only works when that browser runs on the
+same machine. Use `wss://` when the frontend is served over HTTPS.
+
+In PowerShell, generate a local secret once and supply its value to the two
+service terminals through your normal secret manager or local environment:
+
+```powershell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+```
+
+With the existing Python 3.11 `.venv` and checkpoint:
+
+```powershell
+cd 'D:\BuiGiaHuy\CN8\EXE202\model\VLSNet\VSLNet'
+$env:VSLNET_BACKEND_URL = 'http://127.0.0.1:8080'
+$env:VSLNET_ALLOWED_ORIGINS = 'http://localhost:3000'
+.\.venv\Scripts\python.exe run.py inference
+```
+
+The frontend starts the stream from its existing WebRTC camera. Its binary
+message has a 17-byte big-endian header: version (1 byte), sequence number
+(4), capture timestamp in Unix milliseconds (8), and JPEG length (4), followed
+by the JPEG bytes. The Java service receives only prediction metadata, not
+images. `VSL_PARTIAL` is temporary and is never added to the gloss transcript;
+only `VSL_FINAL` is eligible. The in-memory Java session registry currently
+supports one backend instance and must be redesigned before horizontal scale.
+
 ### Architecture
 <div align="center">
   <img src="asset/architecture.png" alt="VSLNet Architecture" width="800">
