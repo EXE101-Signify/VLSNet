@@ -168,6 +168,22 @@ python run.py inference --path config/vsl_net_configuration.yaml
 
 The API runs at **`http://127.0.0.1:8001`** by default (`VSLNET_PORT` overrides the port), main endpoint: `POST /predict`. This separate port avoids conflicting with Signify's alphabet recognition service.
 
+The response retains `action`, `confidence`, and `processing_ms`, and also includes
+`timings` (`upload_read_ms`, `ffmpeg_ms`, `pose_extraction_ms`,
+`preprocessing_ms`, `model_inference_ms`, `python_total_ms`). Durations use a
+monotonic clock. `VSLNET_MAX_CONCURRENT_INFERENCE` defaults to `1`; excess
+requests receive HTTP 429. `VSLNET_POSE_MODE=cli` is the default preprocessing
+path. `VSLNET_POSE_MODE=inprocess` is experimental and reuses the same
+`pose_video` library function inside the API process. Keep `cli` for real VSL
+use until the tensor and prediction comparison passes on representative VSL
+videos. The in-process path currently has no hard pose-extraction timeout.
+
+To measure technical latency against a running API without claiming VSL
+accuracy, run `python scripts/benchmark_api.py --synthetic --runs 4`. Use
+`--video path/to/real-vsl.webm` for a representative clip. Run regression tests
+with `python -m unittest discover -s tests -v` after activating the Python
+environment and adding FFmpeg to `PATH`.
+
 ### 7. Run the Demo UI (Frontend)
 
 Open a new terminal:

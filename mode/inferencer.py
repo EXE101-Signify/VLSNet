@@ -67,6 +67,12 @@ def create_app(args):
         PoseNormalize()
     ])
     inference_slots = threading.BoundedSemaphore(MAX_CONCURRENT_INFERENCE)
+    pose_mode = os.getenv('VSLNET_POSE_MODE', 'cli')
+    if pose_mode not in ('cli', 'inprocess'):
+        raise ValueError('VSLNET_POSE_MODE must be cli or inprocess')
+    pose_video_fn = None
+    if pose_mode == 'inprocess':
+        from pose_format.bin.pose_estimation import pose_video as pose_video_fn
 
     def process_video(video_bytes: bytes, started: float, upload_read_ms: float):
         timings = {'upload_read_ms': upload_read_ms}
@@ -90,15 +96,19 @@ def create_app(args):
                 return JSONResponse(status_code=422, content={'status': 'error', 'message': 'Invalid video or FFmpeg unavailable'})
             timings['ffmpeg_ms'] = round((time.perf_counter() - step) * 1000, 2)
 
-            if not VIDEO_TO_POSE_SCRIPT:
+            if pose_mode == 'cli' and not VIDEO_TO_POSE_SCRIPT:
                 return JSONResponse(status_code=503, content={'status': 'error', 'message': 'video_to_pose script not found'})
             step = time.perf_counter()
             try:
-                subprocess.run(
-                    [VIDEO_TO_POSE_SCRIPT, '-i', video_tmp_path, '-o', pose_tmp_path,
-                     '--format', 'mediapipe'],
-                    check=True, timeout=45, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
+                if pose_mode == 'inprocess':
+                    pose_video_fn(video_tmp_path, pose_tmp_path, 'mediapipe', {},
+                                  progress=False, pose_workers=1)
+                else:
+                    subprocess.run(
+                        [VIDEO_TO_POSE_SCRIPT, '-i', video_tmp_path, '-o', pose_tmp_path,
+                         '--format', 'mediapipe'],
+                        check=True, timeout=45, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
             except subprocess.TimeoutExpired:
                 return JSONResponse(status_code=504, content={'status': 'error', 'message': 'Pose extraction timeout'})
             except (OSError, subprocess.CalledProcessError):
@@ -153,7 +163,7 @@ def create_app(args):
                 return await run_in_threadpool(process_video, video_bytes, started, upload_read_ms)
             finally:
                 inference_slots.release()
-        except Exception as e:
+        except Exception:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Inference failed"})
 
     return app
